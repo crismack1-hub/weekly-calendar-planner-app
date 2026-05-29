@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.weeklyplanner',
-  appName: 'Weekly Planner',
+  appId: 'au.com.today.app',
+  appName: 'Today',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

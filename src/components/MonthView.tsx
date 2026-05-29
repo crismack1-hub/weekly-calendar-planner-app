@@ -47,8 +47,17 @@ export function MonthView({ referenceDate }: Props) {
         {days.map((d) => {
           const inMonth = isSameMonth(d, referenceDate);
           const isToday = isSameDay(d, today);
-          const dayEvents = instances.filter((i) => isSameDay(i.start, d)).slice(0, 4);
-          const overflow = instances.filter((i) => isSameDay(i.start, d)).length - dayEvents.length;
+          const allForDay = instances.filter((i) => isSameDay(i.start, d));
+          const dayEvents = allForDay.slice(0, 4);
+          const overflow = allForDay.length - dayEvents.length;
+          // For the mobile dot view we want up to 4 unique colored dots
+          const dotColors = Array.from(
+            new Set(
+              allForDay.map(
+                (i) => s.categories.find((c) => c.id === i.event.categoryId)?.color || '#64748b',
+              ),
+            ),
+          ).slice(0, 4);
           return (
             <div
               key={d.toISOString()}
@@ -94,7 +103,26 @@ export function MonthView({ referenceDate }: Props) {
                   {d.getDate()}
                 </span>
               </div>
-              <div className="mt-1 space-y-0.5">
+              {/* Mobile: colored dots (titles don't fit in <50px cells) */}
+              {dotColors.length > 0 && (
+                <div className="sm:hidden mt-1 flex flex-wrap items-center gap-1">
+                  {dotColors.map((c, idx) => (
+                    <span
+                      key={`${c}-${idx}`}
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ background: c, boxShadow: `0 0 6px ${c}66` }}
+                    />
+                  ))}
+                  {allForDay.length > dotColors.length && (
+                    <span className="text-[9px] tabular-nums text-slate-500 dark:text-slate-400 leading-none ml-0.5">
+                      +{allForDay.length - dotColors.length}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Desktop: full event titles */}
+              <div className="hidden sm:block mt-1 space-y-0.5">
                 {dayEvents.map((i) => {
                   const color = s.categories.find((c) => c.id === i.event.categoryId)?.color || '#64748b';
                   return (

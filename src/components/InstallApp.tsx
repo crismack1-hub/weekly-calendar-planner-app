@@ -36,7 +36,7 @@ export function InstallApp({ variant = 'section' }: Props) {
           <Smartphone size={16} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold tracking-tight">Install Weekly Planner</div>
+          <div className="text-sm font-semibold tracking-tight">Install Today</div>
           <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
             {isIOS ? 'Add to your home screen for a native-app feel.' : 'Get the offline-capable app, one tap away.'}
           </div>

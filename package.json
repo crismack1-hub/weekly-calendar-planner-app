@@ -1,5 +1,5 @@
 {
-  "name": "weekly-calendar-planner",
+  "name": "today-app",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -16,7 +16,7 @@
     "android": "npm run build && cap sync android && cap open android",
     "ios": "npm run build && cap sync ios && cap open ios",
     "icons:prep": "node scripts/generate-icons.mjs",
-    "icons": "npm run icons:prep && npx @capacitor/assets generate --iconBackgroundColor #6366f1 --iconBackgroundColorDark #0b0d12 --splashBackgroundColor #f8fafc --splashBackgroundColorDark #0b0d12"
+    "icons": "npm run icons:prep && npx @capacitor/assets generate --iconBackgroundColor #f97316 --iconBackgroundColorDark #0b0d12 --splashBackgroundColor #f8fafc --splashBackgroundColorDark #0b0d12"
   },
   "dependencies": {
     "@capacitor/android": "^6.1.2",

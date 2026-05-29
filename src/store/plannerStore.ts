@@ -1,17 +1,32 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import type {
+  BucketItem,
+  Book,
   CalendarEvent,
   Category,
+  DoseStatus,
   Goal,
   Habit,
+  JournalEntry,
+  Meal,
+  Medication,
+  ModuleId,
+  Note,
   PlannerState,
+  Project,
   Settings,
+  Task,
+  Transaction,
+  Trip,
+  TripItem,
   ViewMode,
+  Workout,
   Workspace,
 } from '../types';
 import { loadState, readActiveOwner, saveState, writeActiveOwner } from '../lib/storage';
 import { dayKey, toISO, addDays, setTime } from '../lib/dates';
+import { allCalendarEvents } from '../lib/integration';
 
 const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
@@ -24,6 +39,13 @@ const DEFAULT_SETTINGS: Settings = {
   notificationsEnabled: false,
   showWeekends: true,
   use24HourClock: false,
+  currency: 'USD',
+  displayName: '',
+  avatarEmoji: '✨',
+  focusAreas: [],
+  visibleModules: [], // empty = show all
+  wellness: {},
+  onboardingCompleted: false,
 };
 
 const DEFAULT_CATEGORIES: Category[] = [
@@ -32,6 +54,9 @@ const DEFAULT_CATEGORIES: Category[] = [
   { id: 'health', name: 'Health', color: '#f43f5e' },
   { id: 'learning', name: 'Learning', color: '#f59e0b' },
   { id: 'social', name: 'Social', color: '#8b5cf6' },
+  { id: 'meals', name: 'Meals', color: '#fb923c' },
+  { id: 'fitness', name: 'Fitness', color: '#22c55e' },
+  { id: 'medication', name: 'Medication', color: '#e11d48' },
 ];
 
 function seedEvents(): CalendarEvent[] {
@@ -61,6 +86,55 @@ function seedEvents(): CalendarEvent[] {
   ];
 }
 
+function seedTasks(): Task[] {
+  const now = toISO(new Date());
+  const mk = (title: string, status: Task['status'], priority: Task['priority']): Task => ({
+    id: nanoid(),
+    title,
+    status,
+    priority,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return [
+    mk('Draft Q3 roadmap', 'doing', 'high'),
+    mk('Reply to onboarding emails', 'todo', 'med'),
+    mk('Read "Atomic Habits" — ch.3', 'todo', 'low'),
+    mk('Schedule dentist', 'todo', 'med'),
+    mk('Ship analytics dashboard', 'done', 'high'),
+  ];
+}
+
+function seedProjects(): Project[] {
+  const now = toISO(new Date());
+  return [
+    { id: 'inbox', name: 'Inbox', color: '#6366f1', createdAt: now, updatedAt: now },
+    { id: 'personal', name: 'Personal', color: '#10b981', createdAt: now, updatedAt: now },
+    { id: 'work', name: 'Work', color: '#0ea5e9', createdAt: now, updatedAt: now },
+  ];
+}
+
+function seedNotes(): Note[] {
+  const now = toISO(new Date());
+  return [
+    {
+      id: nanoid(),
+      title: 'Welcome to your workspace',
+      body: 'This is your notes hub. Capture ideas, meeting notes, and reference material here. Use **markdown-style** formatting if you like — or just write plainly.\n\nTip: pin a note to keep it at the top.',
+      pinned: true,
+      tags: ['welcome'],
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+}
+
+function seedTrips(): { trips: Trip[]; tripItems: TripItem[] } {
+  // Empty by default — travel is an opt-in module. A sample trip would
+  // muddy the calendar/dashboard for users who don't travel.
+  return { trips: [], tripItems: [] };
+}
+
 function defaultState(): PlannerState {
   return {
     events: seedEvents(),
@@ -71,6 +145,17 @@ function defaultState(): PlannerState {
       { id: nanoid(), name: 'Exercise', emoji: '💪', color: '#f43f5e', target: 4, completions: {}, createdAt: toISO(new Date()) },
       { id: nanoid(), name: 'Meditate', emoji: '🧘', color: '#10b981', target: 7, completions: {}, createdAt: toISO(new Date()) },
     ],
+    tasks: seedTasks(),
+    projects: seedProjects(),
+    notes: seedNotes(),
+    journal: [],
+    transactions: [],
+    books: [],
+    bucket: [],
+    ...seedTrips(),
+    medications: [],
+    meals: [],
+    workouts: [],
     settings: DEFAULT_SETTINGS,
   };
 }
@@ -78,6 +163,7 @@ function defaultState(): PlannerState {
 interface PlannerStore extends PlannerState {
   // ui state
   view: ViewMode;
+  activeModule: ModuleId;
   currentDate: string;
   selectedEventId: string | null;
   isEventModalOpen: boolean;
@@ -86,6 +172,7 @@ interface PlannerStore extends PlannerState {
   isImportExportOpen: boolean;
   isAuthModalOpen: boolean;
   isShareModalOpen: boolean;
+  isPersonalizeOpen: boolean;
   sidebarOpen: boolean;
   searchQuery: string;
   filteredCategoryIds: string[] | null;
@@ -114,12 +201,75 @@ interface PlannerStore extends PlannerState {
   deleteGoal: (id: string) => void;
 
   addHabit: (h: Omit<Habit, 'id' | 'createdAt' | 'completions'>) => void;
+  updateHabit: (id: string, patch: Partial<Habit>) => void;
   toggleHabitDay: (id: string, day: Date) => void;
   deleteHabit: (id: string) => void;
+
+  // tasks
+  addTask: (t: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  updateTask: (id: string, patch: Partial<Task>) => void;
+  deleteTask: (id: string) => void;
+  setTaskStatus: (id: string, status: Task['status']) => void;
+
+  // projects
+  addProject: (p: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateProject: (id: string, patch: Partial<Project>) => void;
+  deleteProject: (id: string) => void;
+
+  // notes
+  addNote: (n: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  updateNote: (id: string, patch: Partial<Note>) => void;
+  deleteNote: (id: string) => void;
+
+  // journal
+  upsertJournal: (date: string, patch: Partial<JournalEntry>) => void;
+  deleteJournal: (id: string) => void;
+
+  // transactions
+  addTransaction: (t: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  deleteTransaction: (id: string) => void;
+
+  // books
+  addBook: (b: Omit<Book, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateBook: (id: string, patch: Partial<Book>) => void;
+  deleteBook: (id: string) => void;
+
+  // bucket
+  addBucketItem: (b: Omit<BucketItem, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateBucketItem: (id: string, patch: Partial<BucketItem>) => void;
+  deleteBucketItem: (id: string) => void;
+
+  // trips + itinerary items (Travel module)
+  addTrip: (t: Omit<Trip, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  updateTrip: (id: string, patch: Partial<Trip>) => void;
+  deleteTrip: (id: string) => void;
+  addTripItem: (i: Omit<TripItem, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  updateTripItem: (id: string, patch: Partial<TripItem>) => void;
+  deleteTripItem: (id: string) => void;
+
+  // wellness — medications
+  addMedication: (m: Omit<Medication, 'id' | 'createdAt' | 'updatedAt' | 'doses'>) => string;
+  updateMedication: (id: string, patch: Partial<Medication>) => void;
+  deleteMedication: (id: string) => void;
+  /** Mark a single dose occurrence (medId + 'yyyy-MM-ddTHH:mm') with a status. Pass null to clear. */
+  logDose: (medId: string, occurrenceKey: string, status: DoseStatus | null) => void;
+
+  // wellness — meals
+  addMeal: (m: Omit<Meal, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  updateMeal: (id: string, patch: Partial<Meal>) => void;
+  deleteMeal: (id: string) => void;
+
+  // wellness — workouts
+  addWorkout: (w: Omit<Workout, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  updateWorkout: (id: string, patch: Partial<Workout>) => void;
+  deleteWorkout: (id: string) => void;
 
   setSettings: (patch: Partial<Settings>) => void;
   importEvents: (events: CalendarEvent[]) => void;
   resetAll: () => void;
+
+  // module nav
+  setActiveModule: (m: ModuleId) => void;
 
   // actions — ui
   setView: (v: ViewMode) => void;
@@ -133,6 +283,7 @@ interface PlannerStore extends PlannerState {
   toggleImportExport: (open?: boolean) => void;
   toggleAuthModal: (open?: boolean) => void;
   toggleShareModal: (open?: boolean) => void;
+  togglePersonalize: (open?: boolean) => void;
   toggleSidebar: () => void;
 
   // workspace
@@ -159,15 +310,57 @@ function pickDataSnapshot(s: PlannerStore): PlannerState {
     categories: s.categories,
     goals: s.goals,
     habits: s.habits,
+    tasks: s.tasks,
+    projects: s.projects,
+    notes: s.notes,
+    journal: s.journal,
+    transactions: s.transactions,
+    books: s.books,
+    bucket: s.bucket,
+    trips: s.trips,
+    tripItems: s.tripItems,
+    medications: s.medications,
+    meals: s.meals,
+    workouts: s.workouts,
     settings: s.settings,
   };
 }
 
 const HISTORY_LIMIT = 50;
 
+function backfill(s: PlannerState): PlannerState {
+  // Existing users already have a populated `settings` object — treat them as
+  // having completed onboarding so we don't interrupt them. New users (no
+  // persisted state) go through `defaultState()` and start with the wizard.
+  const hadPriorSettings = s.settings && Object.keys(s.settings).length > 0;
+  const mergedSettings: Settings = { ...DEFAULT_SETTINGS, ...s.settings };
+  if (hadPriorSettings && mergedSettings.onboardingCompleted === false) {
+    mergedSettings.onboardingCompleted = true;
+  }
+  const withUpdated = <T extends { createdAt: string; updatedAt?: string }>(arr: T[] | undefined): T[] =>
+    (arr ?? []).map((x) => (x.updatedAt ? x : { ...x, updatedAt: x.createdAt }));
+  return {
+    ...s,
+    tasks: s.tasks ?? seedTasks(),
+    projects: withUpdated<Project>(s.projects ?? seedProjects()),
+    notes: s.notes ?? seedNotes(),
+    journal: s.journal ?? [],
+    transactions: withUpdated<Transaction>(s.transactions ?? []),
+    books: withUpdated<Book>(s.books ?? []),
+    bucket: withUpdated<BucketItem>(s.bucket ?? []),
+    trips: s.trips ?? [],
+    tripItems: s.tripItems ?? [],
+    medications: withUpdated<Medication>(s.medications ?? []),
+    meals: withUpdated<Meal>(s.meals ?? []),
+    workouts: withUpdated<Workout>(s.workouts ?? []),
+    settings: mergedSettings,
+  };
+}
+
 export const usePlannerStore = create<PlannerStore>((set, get) => {
   const activeOwnerId = readActiveOwner();
-  const initial = loadState(activeOwnerId) || defaultState();
+  const loaded = loadState(activeOwnerId);
+  const initial = loaded ? backfill(loaded) : defaultState();
 
   function commit(mutator: (snap: PlannerState) => PlannerState) {
     const prev = pickDataSnapshot(get());
@@ -180,6 +373,7 @@ export const usePlannerStore = create<PlannerStore>((set, get) => {
   return {
     ...initial,
     view: 'week',
+    activeModule: 'today' as ModuleId,
     currentDate: toISO(new Date()),
     selectedEventId: null,
     isEventModalOpen: false,
@@ -188,6 +382,7 @@ export const usePlannerStore = create<PlannerStore>((set, get) => {
     isImportExportOpen: false,
     isAuthModalOpen: false,
     isShareModalOpen: false,
+    isPersonalizeOpen: !initial.settings.onboardingCompleted,
     sidebarOpen: true,
     searchQuery: '',
     filteredCategoryIds: null,
@@ -282,6 +477,12 @@ export const usePlannerStore = create<PlannerStore>((set, get) => {
         ],
       }));
     },
+    updateHabit: (id, patch) => {
+      commit((s) => ({
+        ...s,
+        habits: s.habits.map((h) => (h.id === id ? { ...h, ...patch } : h)),
+      }));
+    },
     toggleHabitDay: (id, day) => {
       const k = dayKey(day);
       commit((s) => ({
@@ -294,6 +495,288 @@ export const usePlannerStore = create<PlannerStore>((set, get) => {
     deleteHabit: (id) => {
       commit((s) => ({ ...s, habits: s.habits.filter((h) => h.id !== id) }));
     },
+
+    // ── Tasks ─────────────────────────────────────────────────
+    addTask: (t) => {
+      const id = nanoid();
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        tasks: [...s.tasks, { ...t, id, createdAt: now, updatedAt: now }],
+      }));
+      return id;
+    },
+    updateTask: (id, patch) => {
+      commit((s) => ({
+        ...s,
+        tasks: s.tasks.map((t) =>
+          t.id === id ? { ...t, ...patch, updatedAt: toISO(new Date()) } : t,
+        ),
+      }));
+    },
+    deleteTask: (id) => {
+      commit((s) => ({ ...s, tasks: s.tasks.filter((t) => t.id !== id) }));
+    },
+    setTaskStatus: (id, status) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        tasks: s.tasks.map((t) =>
+          t.id === id
+            ? { ...t, status, updatedAt: now, completedAt: status === 'done' ? now : undefined }
+            : t,
+        ),
+      }));
+    },
+
+    // ── Projects ──────────────────────────────────────────────
+    addProject: (p) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        projects: [...s.projects, { ...p, id: nanoid(), createdAt: now, updatedAt: now }],
+      }));
+    },
+    updateProject: (id, patch) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        projects: s.projects.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: now } : p)),
+      }));
+    },
+    deleteProject: (id) => {
+      commit((s) => ({
+        ...s,
+        projects: s.projects.filter((p) => p.id !== id),
+        tasks: s.tasks.map((t) => (t.projectId === id ? { ...t, projectId: undefined } : t)),
+      }));
+    },
+
+    // ── Notes ─────────────────────────────────────────────────
+    addNote: (n) => {
+      const id = nanoid();
+      const now = toISO(new Date());
+      commit((s) => ({ ...s, notes: [...s.notes, { ...n, id, createdAt: now, updatedAt: now }] }));
+      return id;
+    },
+    updateNote: (id, patch) => {
+      commit((s) => ({
+        ...s,
+        notes: s.notes.map((n) =>
+          n.id === id ? { ...n, ...patch, updatedAt: toISO(new Date()) } : n,
+        ),
+      }));
+    },
+    deleteNote: (id) => {
+      commit((s) => ({ ...s, notes: s.notes.filter((n) => n.id !== id) }));
+    },
+
+    // ── Journal ───────────────────────────────────────────────
+    upsertJournal: (date, patch) => {
+      const now = toISO(new Date());
+      commit((s) => {
+        const existing = s.journal.find((j) => j.date === date);
+        if (existing) {
+          return {
+            ...s,
+            journal: s.journal.map((j) =>
+              j.id === existing.id ? { ...j, ...patch, updatedAt: now } : j,
+            ),
+          };
+        }
+        return {
+          ...s,
+          journal: [
+            ...s.journal,
+            { id: nanoid(), date, createdAt: now, updatedAt: now, ...patch },
+          ],
+        };
+      });
+    },
+    deleteJournal: (id) => {
+      commit((s) => ({ ...s, journal: s.journal.filter((j) => j.id !== id) }));
+    },
+
+    // ── Transactions ──────────────────────────────────────────
+    addTransaction: (t) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        transactions: [
+          ...s.transactions,
+          { ...t, id: nanoid(), createdAt: now, updatedAt: now },
+        ],
+      }));
+    },
+    deleteTransaction: (id) => {
+      commit((s) => ({ ...s, transactions: s.transactions.filter((t) => t.id !== id) }));
+    },
+
+    // ── Books ─────────────────────────────────────────────────
+    addBook: (b) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        books: [...s.books, { ...b, id: nanoid(), createdAt: now, updatedAt: now }],
+      }));
+    },
+    updateBook: (id, patch) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        books: s.books.map((b) => (b.id === id ? { ...b, ...patch, updatedAt: now } : b)),
+      }));
+    },
+    deleteBook: (id) => {
+      commit((s) => ({ ...s, books: s.books.filter((b) => b.id !== id) }));
+    },
+
+    // ── Bucket list ───────────────────────────────────────────
+    addBucketItem: (b) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        bucket: [...s.bucket, { ...b, id: nanoid(), createdAt: now, updatedAt: now }],
+      }));
+    },
+    updateBucketItem: (id, patch) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        bucket: s.bucket.map((b) => (b.id === id ? { ...b, ...patch, updatedAt: now } : b)),
+      }));
+    },
+    deleteBucketItem: (id) => {
+      commit((s) => ({ ...s, bucket: s.bucket.filter((b) => b.id !== id) }));
+    },
+
+    // ── Trips + itinerary items ───────────────────────────────
+    addTrip: (t) => {
+      const id = nanoid();
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        trips: [...s.trips, { ...t, id, createdAt: now, updatedAt: now }],
+      }));
+      return id;
+    },
+    updateTrip: (id, patch) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        trips: s.trips.map((t) => (t.id === id ? { ...t, ...patch, updatedAt: now } : t)),
+      }));
+    },
+    deleteTrip: (id) => {
+      commit((s) => ({
+        ...s,
+        trips: s.trips.filter((t) => t.id !== id),
+        // Cascade: remove itinerary items for the deleted trip
+        tripItems: s.tripItems.filter((i) => i.tripId !== id),
+      }));
+    },
+    addTripItem: (item) => {
+      const id = nanoid();
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        tripItems: [...s.tripItems, { ...item, id, createdAt: now, updatedAt: now }],
+      }));
+      return id;
+    },
+    updateTripItem: (id, patch) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        tripItems: s.tripItems.map((i) => (i.id === id ? { ...i, ...patch, updatedAt: now } : i)),
+      }));
+    },
+    deleteTripItem: (id) => {
+      commit((s) => ({ ...s, tripItems: s.tripItems.filter((i) => i.id !== id) }));
+    },
+
+    // ── Wellness: Medications ─────────────────────────────────
+    addMedication: (m) => {
+      const id = nanoid();
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        medications: [
+          ...s.medications,
+          { ...m, id, doses: {}, createdAt: now, updatedAt: now },
+        ],
+      }));
+      return id;
+    },
+    updateMedication: (id, patch) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        medications: s.medications.map((m) =>
+          m.id === id ? { ...m, ...patch, updatedAt: now } : m,
+        ),
+      }));
+    },
+    deleteMedication: (id) => {
+      commit((s) => ({ ...s, medications: s.medications.filter((m) => m.id !== id) }));
+    },
+    logDose: (medId, occurrenceKey, status) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        medications: s.medications.map((m) => {
+          if (m.id !== medId) return m;
+          const next = { ...m.doses };
+          if (status === null) delete next[occurrenceKey];
+          else next[occurrenceKey] = status;
+          return { ...m, doses: next, updatedAt: now };
+        }),
+      }));
+    },
+
+    // ── Wellness: Meals ───────────────────────────────────────
+    addMeal: (m) => {
+      const id = nanoid();
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        meals: [...s.meals, { ...m, id, createdAt: now, updatedAt: now }],
+      }));
+      return id;
+    },
+    updateMeal: (id, patch) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        meals: s.meals.map((m) => (m.id === id ? { ...m, ...patch, updatedAt: now } : m)),
+      }));
+    },
+    deleteMeal: (id) => {
+      commit((s) => ({ ...s, meals: s.meals.filter((m) => m.id !== id) }));
+    },
+
+    // ── Wellness: Workouts ────────────────────────────────────
+    addWorkout: (w) => {
+      const id = nanoid();
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        workouts: [...s.workouts, { ...w, id, createdAt: now, updatedAt: now }],
+      }));
+      return id;
+    },
+    updateWorkout: (id, patch) => {
+      const now = toISO(new Date());
+      commit((s) => ({
+        ...s,
+        workouts: s.workouts.map((w) => (w.id === id ? { ...w, ...patch, updatedAt: now } : w)),
+      }));
+    },
+    deleteWorkout: (id) => {
+      commit((s) => ({ ...s, workouts: s.workouts.filter((w) => w.id !== id) }));
+    },
+
+    setActiveModule: (m) => set({ activeModule: m }),
 
     setSettings: (patch) => {
       commit((s) => ({ ...s, settings: { ...s.settings, ...patch } }));
@@ -332,21 +815,17 @@ export const usePlannerStore = create<PlannerStore>((set, get) => {
     toggleImportExport: (open) => set((s) => ({ isImportExportOpen: open ?? !s.isImportExportOpen })),
     toggleAuthModal: (open) => set((s) => ({ isAuthModalOpen: open ?? !s.isAuthModalOpen })),
     toggleShareModal: (open) => set((s) => ({ isShareModalOpen: open ?? !s.isShareModalOpen })),
+    togglePersonalize: (open) => set((s) => ({ isPersonalizeOpen: open ?? !s.isPersonalizeOpen })),
     toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 
     setActiveOwner: (ownerId) => {
       // Persist the current dataset under its current owner key before swapping.
       const cur = get();
-      const curSnap: PlannerState = {
-        events: cur.events,
-        categories: cur.categories,
-        goals: cur.goals,
-        habits: cur.habits,
-        settings: cur.settings,
-      };
+      const curSnap = pickDataSnapshot(cur);
       saveState(curSnap, cur.activeOwnerId);
       // Load the target dataset (or empty defaults).
-      const next = loadState(ownerId) || defaultState();
+      const loaded = loadState(ownerId);
+      const next = loaded ? backfill(loaded) : defaultState();
       writeActiveOwner(ownerId);
       set({
         ...next,
@@ -408,7 +887,10 @@ export const usePlannerStore = create<PlannerStore>((set, get) => {
 });
 
 export function selectFilteredEvents(s: PlannerStore): CalendarEvent[] {
-  let evs = s.events;
+  // Includes virtual events derived from scheduled tasks, trips, and trip
+  // items — the calendar surfaces all "things that happen at a time" without
+  // each module needing to know about the others.
+  let evs = allCalendarEvents(s);
   if (s.filteredCategoryIds && s.filteredCategoryIds.length) {
     evs = evs.filter((e) => e.categoryId && s.filteredCategoryIds!.includes(e.categoryId));
   }

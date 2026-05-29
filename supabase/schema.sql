@@ -1,5 +1,6 @@
--- Weekly Planner schema for Supabase.
+-- Today schema for Supabase.
 -- Paste this into the SQL editor of your Supabase project and run it once.
+-- Safe to re-run: every statement is idempotent.
 
 -- ── Tables ───────────────────────────────────────────────────
 create table if not exists public.events (
@@ -251,3 +252,310 @@ alter publication supabase_realtime add table public.goals;
 alter publication supabase_realtime add table public.habits;
 alter publication supabase_realtime add table public.user_settings;
 alter publication supabase_realtime add table public.planner_members;
+
+-- ════════════════════════════════════════════════════════════════
+-- Today v2 — Tasks, Projects, Notes, Journal, Transactions,
+-- Books, Bucket items. Every module's data is per-user with RLS.
+-- ════════════════════════════════════════════════════════════════
+
+-- Tasks (Tasks module, Kanban + list)
+create table if not exists public.tasks (
+  id text primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  title text not null,
+  notes text,
+  status text not null default 'todo' check (status in ('todo','doing','done')),
+  priority text check (priority in ('low','med','high','urgent')),
+  due_date timestamptz,
+  tags text[],
+  project_id text,
+  category_id text,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Projects (Tasks module — groups for tasks)
+create table if not exists public.projects (
+  id text primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  name text not null,
+  color text not null,
+  description text,
+  archived boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Notes (Notes module)
+create table if not exists public.notes (
+  id text primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  title text not null default '',
+  body text not null default '',
+  tags text[],
+  pinned boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Journal entries (Journal module — one per day per user)
+create table if not exists public.journal_entries (
+  id text primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  date text not null,
+  mood integer check (mood between 1 and 5),
+  gratitude text,
+  reflection text,
+  highlights text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists journal_entries_user_date_idx
+  on public.journal_entries(user_id, date);
+
+-- Transactions (Finance module — income/expense log)
+create table if not exists public.transactions (
+  id text primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  kind text not null check (kind in ('income','expense')),
+  amount numeric(14,2) not null,
+  category text not null,
+  note text,
+  date text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Books (Reading module)
+create table if not exists public.books (
+  id text primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  title text not null,
+  author text,
+  status text not null default 'wishlist' check (status in ('wishlist','reading','done')),
+  progress integer check (progress between 0 and 100),
+  rating integer check (rating between 0 and 5),
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Bucket items (Bucket-list module)
+create table if not exists public.bucket_items (
+  id text primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  title text not null,
+  description text,
+  image_url text,
+  done boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Trips (Travel module — high-level trip records)
+create table if not exists public.trips (
+  id text primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  title text not null,
+  destination text,
+  start_date text,
+  end_date text,
+  status text not null default 'planning' check (status in ('idea','planning','booked','active','done')),
+  color text not null,
+  notes text,
+  image_url text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Trip itinerary items (flights, lodging, activities, etc.)
+create table if not exists public.trip_items (
+  id text primary key,
+  user_id uuid references auth.users(id) on delete cascade not null,
+  trip_id text not null,
+  type text not null check (type in ('flight','transit','lodging','activity','food','note')),
+  title text not null,
+  date text,
+  "time" text,
+  location text,
+  notes text,
+  confirmation_code text,
+  cost numeric(14,2),
+  done boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- ── Indexes (per-user lookup, the hot path for every module) ─
+create index if not exists tasks_user_idx        on public.tasks(user_id);
+create index if not exists projects_user_idx     on public.projects(user_id);
+create index if not exists notes_user_idx        on public.notes(user_id);
+create index if not exists journal_user_idx      on public.journal_entries(user_id);
+create index if not exists transactions_user_idx on public.transactions(user_id);
+create index if not exists books_user_idx        on public.books(user_id);
+create index if not exists bucket_user_idx       on public.bucket_items(user_id);
+create index if not exists trips_user_idx        on public.trips(user_id);
+create index if not exists trip_items_user_idx   on public.trip_items(user_id);
+create index if not exists trip_items_trip_idx   on public.trip_items(trip_id);
+
+-- ── RLS — each table is owner-only by default, then we layer in
+-- the shared-planner policy that lets accepted members access it.
+alter table public.tasks            enable row level security;
+alter table public.projects         enable row level security;
+alter table public.notes            enable row level security;
+alter table public.journal_entries  enable row level security;
+alter table public.transactions     enable row level security;
+alter table public.books            enable row level security;
+alter table public.bucket_items     enable row level security;
+alter table public.trips            enable row level security;
+alter table public.trip_items       enable row level security;
+
+drop policy if exists "tasks_access" on public.tasks;
+create policy "tasks_access" on public.tasks
+  for all
+  using (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = tasks.user_id and m.member_id = auth.uid())
+  )
+  with check (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = tasks.user_id and m.member_id = auth.uid() and m.role = 'editor')
+  );
+
+drop policy if exists "projects_access" on public.projects;
+create policy "projects_access" on public.projects
+  for all
+  using (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = projects.user_id and m.member_id = auth.uid())
+  )
+  with check (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = projects.user_id and m.member_id = auth.uid() and m.role = 'editor')
+  );
+
+drop policy if exists "notes_access" on public.notes;
+create policy "notes_access" on public.notes
+  for all
+  using (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = notes.user_id and m.member_id = auth.uid())
+  )
+  with check (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = notes.user_id and m.member_id = auth.uid() and m.role = 'editor')
+  );
+
+drop policy if exists "journal_access" on public.journal_entries;
+create policy "journal_access" on public.journal_entries
+  for all
+  using (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = journal_entries.user_id and m.member_id = auth.uid())
+  )
+  with check (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = journal_entries.user_id and m.member_id = auth.uid() and m.role = 'editor')
+  );
+
+-- Finance, reading, and bucket are personal by default (members can read but only the owner writes).
+drop policy if exists "transactions_access" on public.transactions;
+create policy "transactions_access" on public.transactions
+  for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "books_access" on public.books;
+create policy "books_access" on public.books
+  for all
+  using (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = books.user_id and m.member_id = auth.uid())
+  )
+  with check (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = books.user_id and m.member_id = auth.uid() and m.role = 'editor')
+  );
+
+drop policy if exists "bucket_access" on public.bucket_items;
+create policy "bucket_access" on public.bucket_items
+  for all
+  using (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = bucket_items.user_id and m.member_id = auth.uid())
+  )
+  with check (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = bucket_items.user_id and m.member_id = auth.uid() and m.role = 'editor')
+  );
+
+drop policy if exists "trips_access" on public.trips;
+create policy "trips_access" on public.trips
+  for all
+  using (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = trips.user_id and m.member_id = auth.uid())
+  )
+  with check (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = trips.user_id and m.member_id = auth.uid() and m.role = 'editor')
+  );
+
+drop policy if exists "trip_items_access" on public.trip_items;
+create policy "trip_items_access" on public.trip_items
+  for all
+  using (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = trip_items.user_id and m.member_id = auth.uid())
+  )
+  with check (
+    auth.uid() = user_id
+    or exists (select 1 from public.planner_members m where m.owner_id = trip_items.user_id and m.member_id = auth.uid() and m.role = 'editor')
+  );
+
+-- ── Realtime for new tables ──────────────────────────────────
+alter publication supabase_realtime add table public.tasks;
+alter publication supabase_realtime add table public.projects;
+alter publication supabase_realtime add table public.notes;
+alter publication supabase_realtime add table public.journal_entries;
+alter publication supabase_realtime add table public.transactions;
+alter publication supabase_realtime add table public.books;
+alter publication supabase_realtime add table public.bucket_items;
+alter publication supabase_realtime add table public.trips;
+alter publication supabase_realtime add table public.trip_items;
+
+-- ════════════════════════════════════════════════════════════════
+-- Subscriptions / entitlements
+-- One row per user. WRITES are restricted to the service role
+-- (used by the Stripe webhook and the AI proxy). Clients can only
+-- read their own row to gate features in the UI.
+-- ════════════════════════════════════════════════════════════════
+create table if not exists public.subscriptions (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  tier text not null default 'free' check (tier in ('free','plus','pro')),
+  status text not null default 'inactive'
+    check (status in ('inactive','trialing','active','past_due','canceled')),
+  stripe_customer_id text,
+  stripe_subscription_id text,
+  current_period_end timestamptz,
+  -- AI quota: counter is reset by the proxy when ai_period_start rolls over.
+  ai_messages_used integer not null default 0,
+  ai_period_start timestamptz not null default date_trunc('month', now()),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists subscriptions_stripe_customer_idx
+  on public.subscriptions(stripe_customer_id);
+
+alter table public.subscriptions enable row level security;
+
+-- Read your own row. No INSERT/UPDATE/DELETE policy = blocked for all
+-- authenticated/anon clients. The service role bypasses RLS, so the Stripe
+-- webhook and AI proxy (running with service_role key) can still write.
+drop policy if exists "subscriptions_self_read" on public.subscriptions;
+create policy "subscriptions_self_read" on public.subscriptions
+  for select using (auth.uid() = user_id);
+
+alter publication supabase_realtime add table public.subscriptions;

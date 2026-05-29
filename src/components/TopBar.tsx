@@ -15,7 +15,8 @@ import {
   MoreHorizontal,
 } from 'lucide-react';
 import { usePlannerStore } from '../store/plannerStore';
-import { fromISO, formatHeaderRange } from '../lib/dates';
+import { fromISO, formatHeaderRange, addDays } from '../lib/dates';
+import { useIsMobile } from '../hooks/useMediaQuery';
 import { AuthButton } from './AuthButton';
 import { InstallApp } from './InstallApp';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
@@ -30,9 +31,23 @@ const VIEWS: { id: ViewMode; label: string; short: string; hint: string }[] = [
 
 export function TopBar() {
   const s = usePlannerStore();
-  const range = formatHeaderRange(s.view, fromISO(s.currentDate), s.settings.weekStartsOn);
+  const isMobile = useIsMobile();
+  // On mobile, "Week" collapses to a single-day view — show the day label
+  // rather than the week range so the header matches what's actually visible.
+  const displayView = isMobile && s.view === 'week' ? 'day' : s.view;
+  const range = formatHeaderRange(displayView, fromISO(s.currentDate), s.settings.weekStartsOn);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
+
+  // On mobile, "Week" view renders as a single day (see CalendarModule), so the
+  // chevrons should advance one day at a time instead of one week.
+  const navigate = (direction: 1 | -1) => {
+    if (isMobile && s.view === 'week') {
+      s.setCurrentDate(addDays(fromISO(s.currentDate), direction));
+    } else {
+      s.navigate(direction);
+    }
+  };
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -51,31 +66,31 @@ export function TopBar() {
   const themeIcon = theme === 'dark' ? <Moon size={16} /> : theme === 'light' ? <Sun size={16} /> : <CalendarIcon size={16} />;
 
   return (
-    <header className="glass flex items-center gap-1 sm:gap-2 border-b border-[color:var(--border)] px-2 sm:px-3 py-2 z-20">
+    <header className="glass flex items-center gap-0.5 sm:gap-2 border-b border-[color:var(--border)] px-1.5 sm:px-3 py-1.5 sm:py-2 z-20 min-w-0">
       <button
-        className="btn-ghost p-1.5"
+        className="btn-ghost p-1.5 shrink-0"
         onClick={s.toggleSidebar}
         title="Toggle sidebar"
         aria-label="Toggle sidebar"
       >
         <Menu size={18} />
       </button>
-      <button className="btn-secondary !px-2 sm:!px-3 text-xs sm:text-sm" onClick={s.goToToday} title="Today (T)">
+      <button className="btn-secondary !px-2 sm:!px-3 text-xs sm:text-sm shrink-0" onClick={s.goToToday} title="Today (T)">
         Today
       </button>
-      <div className="flex items-center">
-        <button className="btn-ghost p-1" onClick={() => s.navigate(-1)} aria-label="Previous">
+      <div className="flex items-center shrink-0">
+        <button className="btn-ghost p-1" onClick={() => navigate(-1)} aria-label="Previous">
           <ChevronLeft size={18} />
         </button>
-        <button className="btn-ghost p-1" onClick={() => s.navigate(1)} aria-label="Next">
+        <button className="btn-ghost p-1" onClick={() => navigate(1)} aria-label="Next">
           <ChevronRight size={18} />
         </button>
       </div>
-      <h1 className="text-sm sm:text-base font-semibold tracking-tight truncate min-w-0">{range}</h1>
+      <h1 className="text-xs sm:text-base font-semibold tracking-tight truncate min-w-0">{range}</h1>
 
-      <div className="ml-auto flex items-center gap-1">
+      <div className="ml-auto flex items-center gap-0.5 sm:gap-1 shrink-0">
         {/* View switcher — segmented control with sliding active state */}
-        <div className="segmented" role="tablist" aria-label="View">
+        <div className="segmented shrink-0" role="tablist" aria-label="View">
           {VIEWS.map((v) => (
             <button
               key={v.id}

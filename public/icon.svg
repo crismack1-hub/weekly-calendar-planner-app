@@ -1,28 +1,52 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#6366f1"/>
-      <stop offset="55%" stop-color="#8b5cf6"/>
-      <stop offset="100%" stop-color="#ec4899"/>
+    <!-- Sky: deep indigo at the top, blending down toward warm amber -->
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3730a3"/>
+      <stop offset="55%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#f97316"/>
     </linearGradient>
-    <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
+    <!-- Subtle top sheen -->
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
       <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
+    <!-- Sun: bright amber at the top fading to deep orange near the horizon -->
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="55%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f97316"/>
+    </linearGradient>
+    <linearGradient id="ray" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fde68a" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#f97316" stop-opacity="0.4"/>
+    </linearGradient>
+    <linearGradient id="horizon" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#fde68a" stop-opacity="0.0"/>
+      <stop offset="50%" stop-color="#fde68a" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#fde68a" stop-opacity="0.0"/>
+    </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#g)"/>
-  <rect width="512" height="256" rx="112" fill="url(#g2)"/>
-  <g transform="translate(96 112)" fill="none" stroke="#ffffff" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="8" y="40" width="304" height="248" rx="28"/>
-    <line x1="92" y1="8" x2="92" y2="72"/>
-    <line x1="228" y1="8" x2="228" y2="72"/>
-    <line x1="8" y1="116" x2="312" y2="116"/>
+
+  <!-- Tile -->
+  <rect width="512" height="512" rx="112" fill="url(#sky)"/>
+  <rect width="512" height="256" rx="112" fill="url(#sheen)"/>
+
+  <!-- Morning star -->
+  <circle cx="180" cy="120" r="6" fill="#fde68a"/>
+  <circle cx="380" cy="160" r="4" fill="#fde68a" opacity="0.7"/>
+
+  <!-- Sun rays (above the rising half-disc) -->
+  <g stroke="url(#ray)" stroke-width="14" stroke-linecap="round" fill="none">
+    <path d="M 170 200 L 200 250"/>
+    <path d="M 342 200 L 312 250"/>
+    <path d="M 256 160 L 256 220"/>
   </g>
-  <g fill="#ffffff">
-    <circle cx="176" cy="296" r="14"/>
-    <circle cx="240" cy="296" r="14"/>
-    <circle cx="304" cy="296" r="14"/>
-    <circle cx="176" cy="356" r="14"/>
-    <circle cx="240" cy="356" r="14" opacity="0.4"/>
-  </g>
+
+  <!-- Sun: half disc clearing the horizon -->
+  <path d="M 144 340 A 112 112 0 0 1 368 340 Z" fill="url(#sun)"/>
+
+  <!-- Horizon line + foreground -->
+  <path d="M 56 360 L 456 360" stroke="url(#horizon)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M 130 392 L 382 392" stroke="url(#horizon)" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
 </svg>

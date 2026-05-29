@@ -13,6 +13,7 @@ import {
 import { usePlannerStore, selectFilteredEvents } from '../store/plannerStore';
 import { expandAll } from '../lib/recurrence';
 import {
+  addDays,
   differenceInMinutes,
   endOfDay,
   formatTime,
@@ -69,6 +70,8 @@ export function WeekView({ referenceDate, singleDay = false }: Props) {
 
   // Auto-scroll to morning on mount
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Tracks the touch start for swipe-to-navigate-day on mobile single-day view
+  const swipeStart = useRef<{ x: number; y: number; t: number } | null>(null);
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = (s.settings.workDayStart - 1) * HOUR_HEIGHT;
@@ -173,8 +176,32 @@ export function WeekView({ referenceDate, singleDay = false }: Props) {
           </div>
         )}
 
-        {/* Time grid */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto calendar-scroll">
+        {/* Time grid — supports horizontal swipe-to-navigate when only one
+            day is visible (i.e. the mobile day view) */}
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto calendar-scroll"
+          onTouchStart={(e) => {
+            if (!singleDay) return;
+            const t = e.changedTouches[0];
+            swipeStart.current = { x: t.clientX, y: t.clientY, t: Date.now() };
+          }}
+          onTouchEnd={(e) => {
+            if (!singleDay || !swipeStart.current) return;
+            const t = e.changedTouches[0];
+            const dx = t.clientX - swipeStart.current.x;
+            const dy = t.clientY - swipeStart.current.y;
+            const elapsed = Date.now() - swipeStart.current.t;
+            swipeStart.current = null;
+            // Only treat as a swipe: horizontal-dominant, decent speed, ≥48px move
+            if (Math.abs(dx) < 48) return;
+            if (Math.abs(dy) > Math.abs(dx) * 0.7) return;
+            if (elapsed > 500) return;
+            const ref = visibleDays[0];
+            const next = addDays(ref, dx < 0 ? 1 : -1);
+            s.setCurrentDate(next);
+          }}
+        >
           <div className="flex relative" style={{ height: 24 * HOUR_HEIGHT }}>
             <TimeColumn use24h={s.settings.use24HourClock} />
             {visibleDays.map((d) => (

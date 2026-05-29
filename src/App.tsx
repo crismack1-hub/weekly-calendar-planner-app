@@ -2,12 +2,6 @@ import { useEffect } from 'react';
 import { usePlannerStore } from './store/plannerStore';
 import { useTheme } from './hooks/useTheme';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import { useIsMobile } from './hooks/useMediaQuery';
-import { Sidebar } from './components/Sidebar';
-import { TopBar } from './components/TopBar';
-import { WeekView } from './components/WeekView';
-import { MonthView } from './components/MonthView';
-import { AgendaView } from './components/AgendaView';
 import { EventModal } from './components/EventModal';
 import { CommandPalette } from './components/CommandPalette';
 import { SettingsModal } from './components/SettingsModal';
@@ -17,40 +11,56 @@ import { InstallApp } from './components/InstallApp';
 import { ReminderToasts } from './components/ReminderToasts';
 import { ShareModal } from './components/ShareModal';
 import { InviteHandler } from './components/InviteHandler';
-import { fromISO } from './lib/dates';
+import { ModuleRail } from './components/ModuleRail';
+import { BottomNav } from './components/BottomNav';
+import { PersonalizeModal } from './components/PersonalizeModal';
+import { SaveIndicator } from './components/SaveIndicator';
+import { useBreakpoint } from './hooks/useMediaQuery';
 import { expandAll } from './lib/recurrence';
 import { fireReminders } from './lib/notifications';
 import { useAuth } from './hooks/useAuth';
 import { startSync, stopSync } from './lib/sync';
+import { startEntitlements, stopEntitlements } from './lib/entitlements';
+
+import { CalendarModule } from './components/modules/CalendarModule';
+import { TodayModule } from './components/modules/TodayModule';
+import { DashboardModule } from './components/modules/DashboardModule';
+import { TasksModule } from './components/modules/TasksModule';
+import { NotesModule } from './components/modules/NotesModule';
+import { TravelModule } from './components/modules/TravelModule';
+import { JournalModule } from './components/modules/JournalModule';
+import { HabitsModule } from './components/modules/HabitsModule';
+import { GoalsModule } from './components/modules/GoalsModule';
+import { AnalyticsModule } from './components/modules/AnalyticsModule';
+import { FinanceModule } from './components/modules/FinanceModule';
+import { MedicationsModule } from './components/modules/MedicationsModule';
+import { MealsModule } from './components/modules/MealsModule';
+import { FitnessModule } from './components/modules/FitnessModule';
+import { ReadingModule } from './components/modules/ReadingModule';
+import { BucketModule } from './components/modules/BucketModule';
+import { AIModule } from './components/modules/AIModule';
+import { StubModule } from './components/modules/StubModule';
 
 export default function App() {
   useTheme();
   useKeyboardShortcuts();
-  const isMobile = useIsMobile();
   const { user } = useAuth();
 
-  const view = usePlannerStore((s) => s.view);
+  const activeModule = usePlannerStore((s) => s.activeModule);
   const events = usePlannerStore((s) => s.events);
-  const currentDate = usePlannerStore((s) => s.currentDate);
-  const sidebarOpen = usePlannerStore((s) => s.sidebarOpen);
-  const toggleSidebar = usePlannerStore((s) => s.toggleSidebar);
   const notificationsEnabled = usePlannerStore((s) => s.settings.notificationsEnabled);
-
   const activeOwnerId = usePlannerStore((s) => s.activeOwnerId);
 
-  // Start / stop cloud sync as auth changes
+  // Start / stop cloud sync + entitlements as auth changes
   useEffect(() => {
-    if (user) startSync(user.id, activeOwnerId || user.id);
-    else stopSync();
-  }, [user?.id]);
-
-  // Default sidebar closed on mobile
-  useEffect(() => {
-    const initial = !window.matchMedia('(max-width: 767px)').matches;
-    if (!initial && usePlannerStore.getState().sidebarOpen) {
-      usePlannerStore.setState({ sidebarOpen: false });
+    if (user) {
+      startSync(user.id, activeOwnerId || user.id);
+      startEntitlements(user.id);
+    } else {
+      stopSync();
+      stopEntitlements();
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!notificationsEnabled) return;
@@ -65,45 +75,32 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [events, notificationsEnabled]);
 
-  const ref = fromISO(currentDate);
+  const bp = useBreakpoint();
+  const isPhone = bp === 'phone';
 
   return (
-    <div className="flex h-screen overflow-hidden relative">
-      {/* Sidebar — overlay on mobile, inline on desktop */}
-      {isMobile ? (
-        <>
-          {sidebarOpen && (
-            <div
-              className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm md:hidden animate-fade-in"
-              onClick={toggleSidebar}
-              aria-hidden
-            />
-          )}
-          <div
-            className={`fixed inset-y-0 left-0 z-50 w-72 transform transition-transform duration-200 md:hidden ${
-              sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-            }`}
-          >
-            <Sidebar onCloseMobile={toggleSidebar} />
-          </div>
-        </>
-      ) : (
-        sidebarOpen && <Sidebar />
-      )}
+    <div
+      className={`h-screen overflow-hidden relative ${isPhone ? 'flex flex-col' : 'flex'}`}
+      data-breakpoint={bp}
+    >
+      {/* Phone: bottom nav. Tablet/desktop: persistent side rail. */}
+      {!isPhone && <ModuleRail />}
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar />
         <InstallApp variant="banner" />
         <main className="flex-1 overflow-hidden">
-          {view === 'week' && <WeekView referenceDate={ref} />}
-          {view === 'day' && <WeekView referenceDate={ref} singleDay />}
-          {view === 'month' && <MonthView referenceDate={ref} />}
-          {view === 'agenda' && <AgendaView referenceDate={ref} />}
+          {renderModule(activeModule)}
         </main>
       </div>
+
+      {isPhone && <BottomNav />}
+
+      <SaveIndicator />
+
       <EventModal />
       <CommandPalette />
       <SettingsModal />
+      <PersonalizeModal />
       <ImportExportModal />
       <AuthModal />
       <ShareModal />
@@ -111,4 +108,71 @@ export default function App() {
       <InviteHandler />
     </div>
   );
+}
+
+function renderModule(id: ReturnType<typeof usePlannerStore.getState>['activeModule']): React.ReactNode {
+  switch (id) {
+    case 'today':
+      return <TodayModule />;
+    case 'dashboard':
+      return <DashboardModule />;
+    case 'calendar':
+      return <CalendarModule />;
+    case 'tasks':
+      return <TasksModule />;
+    case 'notes':
+      return <NotesModule />;
+    case 'travel':
+      return <TravelModule />;
+    case 'journal':
+      return <JournalModule />;
+    case 'habits':
+      return <HabitsModule />;
+    case 'goals':
+      return <GoalsModule />;
+    case 'analytics':
+      return <AnalyticsModule />;
+    case 'finance':
+      return <FinanceModule />;
+    case 'medications':
+      return <MedicationsModule />;
+    case 'meals':
+      return <MealsModule />;
+    case 'fitness':
+      return <FitnessModule />;
+    case 'reading':
+      return <ReadingModule />;
+    case 'bucket':
+      return <BucketModule />;
+    case 'ai':
+      return <AIModule />;
+    case 'vision':
+      return (
+        <StubModule
+          id="vision"
+          blurb="A canvas for the future you. Pin images, quotes, and goals so the long-term stays visible day to day."
+          features={[
+            'Image grid with drag-to-rearrange tiles',
+            'Quote pinning with elegant typography',
+            'Linked to long-term goals from the Goals tab',
+            'Yearly snapshot saved to the Archive',
+          ]}
+        />
+      );
+    case 'archive':
+      return (
+        <StubModule
+          id="archive"
+          blurb="Past months, completed projects, and old notes — searchable but out of the way."
+          features={[
+            'Auto-archive completed projects and finished goals',
+            'Full-text search across past notes and journal entries',
+            'Year-in-review summaries',
+            'Restore items back to active modules in one click',
+          ]}
+        />
+      );
+    default:
+      return null;
+  }
 }

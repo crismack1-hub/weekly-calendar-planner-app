@@ -3,6 +3,7 @@ import { Modal } from './Modal';
 import { InstallApp } from './InstallApp';
 import { requestPermission, notificationsAllowed } from '../lib/notifications';
 import { useState } from 'react';
+import { Sparkles, ArrowRight } from 'lucide-react';
 import type { BgTheme } from '../types';
 
 const ACCENT_PRESETS = ['#6366f1', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#0ea5e9', '#ec4899'];
@@ -58,6 +59,39 @@ export function SettingsModal() {
   return (
     <Modal open={s.isSettingsOpen} onClose={() => s.toggleSettings(false)} title="Settings" size="md">
       <div className="space-y-4 px-5 py-4">
+        {/* Personalize ── re-opens the multi-step wizard */}
+        <button
+          onClick={() => {
+            s.toggleSettings(false);
+            s.togglePersonalize(true);
+          }}
+          className="w-full flex items-center gap-3 rounded-xl border border-[color:var(--border-strong)] p-3 text-left transition-all hover:-translate-y-[1px]"
+          style={{
+            background: `linear-gradient(135deg, color-mix(in srgb, ${s.settings.accent} 12%, transparent), transparent 60%)`,
+          }}
+        >
+          <div
+            className="grid h-10 w-10 place-items-center rounded-xl text-white shadow-sm shrink-0"
+            style={{
+              background: `linear-gradient(135deg, ${s.settings.accent}, color-mix(in srgb, ${s.settings.accent} 60%, #ec4899))`,
+              boxShadow: `0 8px 18px -8px color-mix(in srgb, ${s.settings.accent} 60%, transparent)`,
+            }}
+          >
+            <span className="text-lg leading-none">{s.settings.avatarEmoji || '✨'}</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <Sparkles size={12} style={{ color: s.settings.accent }} />
+              <span className="text-sm font-semibold">Personalize workspace</span>
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+              {s.settings.displayName ? `Hi ${s.settings.displayName.split(' ')[0]} — ` : ''}
+              Edit name, modules, focus areas and look & feel
+            </div>
+          </div>
+          <ArrowRight size={14} className="text-slate-400 shrink-0" />
+        </button>
+
         <div>
           <label className="label">Theme</label>
           <div className="flex gap-1.5">

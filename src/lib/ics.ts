@@ -15,7 +15,7 @@ const NUM_TO_DAY = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
 
 export function exportICS(events: CalendarEvent[]): string {
   const cal = new ICAL.Component(['vcalendar', [], []]);
-  cal.updatePropertyWithValue('prodid', '-//Weekly Planner//EN');
+  cal.updatePropertyWithValue('prodid', '-//Today//EN');
   cal.updatePropertyWithValue('version', '2.0');
 
   for (const ev of events) {

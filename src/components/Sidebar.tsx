@@ -1,9 +1,10 @@
-import { CalendarDays, Tag, Target, Repeat, X, Plus, Clock } from 'lucide-react';
+import { Tag, Target, Repeat, X, Plus, Clock } from 'lucide-react';
 import { usePlannerStore } from '../store/plannerStore';
 import { MiniCalendar } from './MiniCalendar';
 import { GoalsPanel } from './GoalsPanel';
 import { HabitsPanel } from './HabitsPanel';
 import { UpcomingPanel } from './UpcomingPanel';
+import { Logo } from './Logo';
 import clsx from 'clsx';
 
 interface SidebarProps {
@@ -16,16 +17,7 @@ export function Sidebar({ onCloseMobile }: SidebarProps = {}) {
   return (
     <aside className="glass flex h-full w-72 flex-col border-r border-[color:var(--border)]">
       <div className="flex items-center gap-2 px-4 py-3.5 border-b border-[color:var(--border)]">
-        <div
-          className="grid h-7 w-7 place-items-center rounded-lg text-white shadow-sm"
-          style={{
-            background:
-              'linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #ec4899))',
-          }}
-        >
-          <CalendarDays size={16} strokeWidth={2.5} />
-        </div>
-        <span className="font-semibold tracking-tight">Weekly Planner</span>
+        <Logo size={22} />
         {onCloseMobile && (
           <button className="btn-ghost ml-auto p-1" onClick={onCloseMobile} aria-label="Close menu">
             <X size={16} />
